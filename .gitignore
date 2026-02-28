@@ -1,0 +1,27 @@
+# Sensitive environment/config
+.env
+
+# Python virtual environments
+env/
+.venv/
+venv/
+
+# Database files
+recipes.db
+*.sqlite3
+
+# Python cache/compiled files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Uploads / runtime generated files
+uploads/
+
+# Editor / OS
+.vscode/
+.DS_Store
+
+# Logs
+*.log
