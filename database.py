@@ -63,3 +63,20 @@ def get_db():
         # WHY finally: This runs even if an error occurred
         # WHY close: Releases database connection back to the pool
         db.close()
+
+
+def create_tables():
+    """Create all database tables (safe to call on startup).
+
+    Ensures models are imported so SQLAlchemy metadata is populated, then
+    creates missing tables. Called from main.py at application startup.
+    """
+    # Import models to ensure they are registered with Base.metadata
+    try:
+        from app import models  # noqa: F401
+    except Exception:
+        # If models can't be imported, re-raise with clearer message
+        raise
+
+    Base.metadata.create_all(bind=engine)
+
