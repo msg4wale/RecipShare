@@ -19,9 +19,9 @@ from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Password hashing context
 # WHAT: Configures how passwords are encrypted
-# WHY bcrypt: Industry-standard, slow by design to prevent brute-force attacks
+# WHY pbkdf2_sha256: Robust, no 72-byte limit (avoids bcrypt truncation issues)
 # WHY deprecated="auto": Automatically migrates from old hash schemes if needed
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
 # WHAT: Tells FastAPI how to extract the JWT token from requests
@@ -60,6 +60,14 @@ def get_password_hash(password: str) -> str:
     # WHY pwd_context.hash: Uses bcrypt to create a secure one-way hash
     # WHY "one-way": Cannot reverse the hash back to original password
     return pwd_context.hash(password)
+
+
+def hash_password(password: str) -> str:
+    """Compatibility alias expected by some tests and older code.
+
+    Returns the hashed password using the configured pwd_context.
+    """
+    return get_password_hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -134,27 +142,34 @@ async def get_current_user(
         # If SECRET_KEY doesn't match or token expired, this raises JWTError
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         
-        # Extract username from token
+        # Extract subject from token
         # WHY "sub": Standard JWT claim for "subject" (the user identifier)
-        username: str = payload.get("sub")
-        
-        if username is None:
-            # Token is valid but missing username
+        subject: str = payload.get("sub")
+
+        if subject is None:
+            # Token is valid but missing subject
             raise credentials_exception
-            
+
     except JWTError:
         # Token is invalid, expired, or tampered with
         # WHY: Raise exception to stop request processing
         raise credentials_exception
-    
+
     # Look up user in database
-    # WHY: Ensure user still exists (they might have been deleted)
-    user = db.query(User).filter(User.username == username).first()
-    
+    # Support tokens where 'sub' is either the numeric user id or the username
+    user = None
+    try:
+        # If subject is an integer string, treat it as user id
+        user_id = int(subject)
+        user = db.query(User).filter(User.id == user_id).first()
+    except (ValueError, TypeError):
+        # Otherwise treat subject as username
+        user = db.query(User).filter(User.username == subject).first()
+
     if user is None:
         # Valid token but user no longer exists
         raise credentials_exception
-    
+
     # Return user information that routes can use
     # WHY dict format: Easy to access user_id, username, etc. in routes
     return {
